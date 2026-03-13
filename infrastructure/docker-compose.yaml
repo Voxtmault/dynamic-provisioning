@@ -1,0 +1,173 @@
+version: '3.8'
+
+# This network allows Traefik to route traffic to both 
+# these static services AND your dynamic tenant containers later.
+networks:
+  saas_network:
+    name: saas_network
+    driver: bridge
+
+services:
+  # 1. THE REVERSE PROXY (The Traffic Cop)
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.insecure=true" # Enable dashboard for local dev
+      - "--providers.docker=true" # Listen to the Docker socket!
+      - "--providers.docker.exposedbydefault=false" # Only route containers with Traefik labels
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # (DNS-01 Let's Encrypt config would go here for production)
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080" # Traefik Dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro" # CRITICAL: Lets Traefik see new containers
+    networks:
+      - saas_network
+
+  # 2. THE SHARED RELATIONAL DATABASE
+  postgres:
+    image: postgres:15-alpine
+    container_name: shared_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: supersecretpassword
+      POSTGRES_DB: dynamic_saas
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf:ro
+    ports:
+      - "5432:5432" # Expose for local dev; in production, you'd likely use an internal network
+    networks:
+      - saas_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d dynamic_saas -U admin" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # 3. THE SHARED CACHE / PUB-SUB
+  redis:
+    image: redis:7-alpine
+    container_name: shared_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379" # Expose for local dev; in production, you'd likely use an internal network
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    networks:
+      - saas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # 4. OBJECT STORAGE (Garage S3)
+  garage:
+    image: dxflrs/garage:v2.1.0
+    container_name: shared_garage
+    restart: unless-stopped
+    volumes:
+      - garage_data:/var/lib/garage/data
+      - garage_meta_data:/var/lib/garage/meta
+      - ./garage.toml:/etc/garage.toml:ro
+    ports:
+      - 3900:3900
+      - 3901:3901
+      - 3902:3902
+      - 3903:3903
+    networks:
+      - saas_network
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  # 5. SECRETS MANAGEMENT (OpenBao)
+  openbao:
+    image: openbao/openbao:latest
+    container_name: shared_openbao
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK # Required for memory locking secrets securely
+    command: ["bao", "server", "-config=/openbao/config/openbao.hcl"]
+    environment:
+      - BAO_ADDR=http://127.0.0.1:8200
+      - VAULT_DISABLE_USER_LOCKOUT=true
+    volumes:
+      - openbao_data:/openbao/file
+      - ./openbao.hcl:/openbao/config/openbao.hcl:ro
+    ports:
+      - 8200:8200
+      - 8201:8201
+    networks:
+      - saas_network
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  # 6. ADMIN BACKEND (The Orchestrator API)
+  admin-backend:
+    container_name: admin_backend
+    build:
+      context: ../admin-backend  # Points up one directory, then into admin-backend!
+      dockerfile: Dockerfile
+    environment:
+      - DB_HOST=postgres
+      - DB_USER=admin
+      - DB_PASS=supersecretpassword
+    volumes:
+      # CRITICAL: Gives the Go backend permission to spin up tenant containers
+      - "/var/run/docker.sock:/var/run/docker.sock" 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin-api.rule=Host(`api.admin.localhost`)"
+      - "traefik.http.routers.admin-api.entrypoints=web"
+    networks:
+      - saas_network
+    depends_on:
+      - postgres
+      - openbao
+      - redis
+      - garage
+
+  # 7. ADMIN FRONTEND (The Dashboard UI)
+  admin-frontend:
+    container_name: admin_frontend
+    build:
+      context: ../admin-frontend # Points to the Flutter Admin UI
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.admin-ui.rule=Host(`admin.localhost`)"
+      - "traefik.http.routers.admin-ui.entrypoints=web"
+    networks:
+      - saas_network
+    depends_on:
+      - admin-backend
+
+volumes:
+  pg_data:
+  redis_data:
+  garage_data:
+  garage_meta_data:
+  openbao_data:
