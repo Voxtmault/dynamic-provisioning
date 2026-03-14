@@ -1,25 +1,25 @@
 #!/bin/bash
 
-openbao="docker exec -ti shared_openbao /bao"
+# Make sure the container name is the same as the one defined in the docker-compose.yaml file
+openbao="docker exec -i shared_openbao bao" # You can make this as an alias in your own host for convenience, but here we define it as a variable for clarity
 
-$openbao status > /dev/null 2>&1
-exit_code=$?
+initialized=$($openbao status | grep "Initialized" | awk '{print $2}')
 
-if [ $exit_code -eq 1 ]; then
+if [ "$initialized" == "false" ]; then
     echo "OpenBao is not initialized, initializing..."
     init_output=$($openbao operator init)
 
     # Save to file
-    echo "$init_output" > ./openbao-init.txt
-    echo "Init output saved to openbao-init.txt, please keep this file safe as it contains the unseal keys and root token."
+    echo "$init_output" > ../openbao-init.keys
+    echo "Init output saved to ../openbao-init.keys, please keep this file safe as it contains the unseal keys and root token."
 
     # Parse the unseal keys
-    unseal_key_1=$(grep "Unseal Key 1:" ./openbao-init.txt | awk '{print $4}')
-    unseal_key_2=$(grep "Unseal Key 2:" ./openbao-init.txt | awk '{print $4}')
-    unseal_key_3=$(grep "Unseal Key 3:" ./openbao-init.txt | awk '{print $4}')
-    root_token=$(grep "Initial Root Token:" ./openbao-init.txt | awk '{print $4}')
+    unseal_key_1=$(grep "Unseal Key 1:" ../openbao-init.keys | awk '{print $4}')
+    unseal_key_2=$(grep "Unseal Key 2:" ../openbao-init.keys | awk '{print $4}')
+    unseal_key_3=$(grep "Unseal Key 3:" ../openbao-init.keys | awk '{print $4}')
+    root_token=$(grep "Initial Root Token:" ../openbao-init.keys | awk '{print $4}')
 
-    rootbao="docker exec -e VAULT_TOKEN=$root_token -it shared_openbao /bao"
+    rootbao="docker exec -e VAULT_TOKEN=$root_token -i shared_openbao bao" # You can make this as an alias in your own host for convenience, but here we define it as a variable for clarity
 
     echo "Unsealing OpenBao..."
     $openbao operator unseal $unseal_key_1
@@ -29,7 +29,7 @@ if [ $exit_code -eq 1 ]; then
     echo "OpenBao unsealed successfully"
 
     echo "Enabling KV secrets engine at secret/ with version 2..."
-    $openbao secrets enable -path=secret kv-v2
+    $rootbao secrets enable -path=secret kv-v2
 
     echo "Copying policy file into OpenBao container..."
     docker cp ./openbao-policy.hcl shared_openbao:/openbao-policy.hcl
@@ -54,11 +54,11 @@ if [ $exit_code -eq 1 ]; then
 
     # Save to file
     timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-    echo "Role ID: $role_id" > ./openbao-approle.txt
-    echo "Secret ID: $secret_id" >> ./openbao-approle.txt
-    echo "Generated at $timestamp" >> ./openbao-approle.txt
+    echo "Role ID: $role_id" > ../openbao-approle.txt
+    echo "Secret ID: $secret_id" >> ../openbao-approle.txt
+    echo "Generated at $timestamp" >> ../openbao-approle.txt
 
-    echo "AppRole credentials saved to openbao-approle.txt, please keep this file safe."
+    echo "AppRole credentials saved to ../openbao-approle.txt, please keep this file safe."
 else
     echo "OpenBao is already initialized, skipping..."
 fi

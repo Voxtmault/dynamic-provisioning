@@ -1,6 +1,6 @@
 #!/bin/bash
 
-openbao="docker exec -ti shared_openbao /bao"
+openbao="docker exec -i shared_openbao /bao"
 
 # Parse the unseal keys
 unseal_key_1=$(grep "Unseal Key 1:" ./openbao-init.txt | awk '{print $4}')
