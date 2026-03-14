@@ -2,12 +2,23 @@ version: '3.8'
 
 # This network allows Traefik to route traffic to both 
 # these static services AND your dynamic tenant containers later.
+# Use this if you are creating a new network for this stack
 networks:
   saas_network:
     name: saas_network
     driver: bridge
 
+# Use this if you want to connect to an existing network (e.g., if you have a pre-existing Traefik setup)
+# networks:
+#   saas_network:
+#     name: <your_existing_network_name> # you could do ```docker network ls``` to find this
+#     external: true
+
 services:
+  # If you have a pre-existing Traefik setup, you can skip / comment out this service definition and just 
+  # connect your admin-backend and admin-frontend to your existing Traefik network. If you want to 
+  # run a standalone Traefik instance for this stack, keep this definition as is and make sure to update 
+  # the network name if needed.
   # 1. THE REVERSE PROXY (The Traffic Cop)
   traefik:
     image: traefik:v3.0
@@ -44,7 +55,7 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf:ro
     ports:
-      - "5432:5432" # Expose for local dev; in production, you'd likely use an internal network
+      - "5432:5432"
     networks:
       - saas_network
     healthcheck:
@@ -66,7 +77,7 @@ services:
       - redis_data:/data
       - ./redis.conf:/usr/local/etc/redis/redis.conf
     ports:
-      - "6379:6379" # Expose for local dev; in production, you'd likely use an internal network
+      - "6379:6379"
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     networks:
       - saas_network
@@ -129,19 +140,20 @@ services:
   admin-backend:
     container_name: admin_backend
     build:
-      context: ../admin-backend  # Points up one directory, then into admin-backend!
+      context: ../admin-backend  # Points up one directory, then into admin-backend
       dockerfile: Dockerfile
     environment:
       - DB_HOST=postgres
       - DB_USER=admin
       - DB_PASS=supersecretpassword
     volumes:
-      # CRITICAL: Gives the Go backend permission to spin up tenant containers
       - "/var/run/docker.sock:/var/run/docker.sock" 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.admin-api.rule=Host(`api.admin.localhost`)"
-      - "traefik.http.routers.admin-api.entrypoints=web"
+      - "traefik.http.routers.admin-api.rule=Host(`api.admin.localhost`)" # Change to your domain if not using localhost
+      - "traefik.http.routers.admin-api.entrypoints=web" # Use this if you don't have TLS set up for local dev
+      # - "traefik.http.routers.admin-api.entrypoints=websecure" # Use this if you have TLS set up (e.g., with a local cert resolver like mkcert or Let's Encrypt staging)
+      # - "traefik.http.routers.admin-api.tls.certresolver=le"   # Use this with websecure label
     networks:
       - saas_network
     depends_on:
@@ -149,6 +161,7 @@ services:
       - openbao
       - redis
       - garage
+      # - traefik # comment this if you are using an external Traefik
 
   # 7. ADMIN FRONTEND (The Dashboard UI)
   admin-frontend:
@@ -158,8 +171,10 @@ services:
       dockerfile: Dockerfile
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.admin-ui.rule=Host(`admin.localhost`)"
-      - "traefik.http.routers.admin-ui.entrypoints=web"
+      - "traefik.http.routers.admin-api.rule=Host(`admin.localhost`)" # Change to your domain if not using localhost
+      - "traefik.http.routers.admin-api.entrypoints=web" # Use this if you don't have TLS set up for local dev
+      # - "traefik.http.routers.admin-api.entrypoints=websecure" # Use this if you have TLS set up (e.g., with a local cert resolver like mkcert or Let's Encrypt staging)
+      # - "traefik.http.routers.admin-api.tls.certresolver=le"   # Use this with websecure label
     networks:
       - saas_network
     depends_on:
