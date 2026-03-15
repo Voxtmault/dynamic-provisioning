@@ -1,18 +1,16 @@
-version: '3.8'
-
 # This network allows Traefik to route traffic to both 
 # these static services AND your dynamic tenant containers later.
 # Use this if you are creating a new network for this stack
-networks:
-  saas_network:
-    name: saas_network
-    driver: bridge
-
-# Use this if you want to connect to an existing network (e.g., if you have a pre-existing Traefik setup)
 # networks:
 #   saas_network:
-#     name: <your_existing_network_name> # you could do ```docker network ls``` to find this
-#     external: true
+#     name: saas_network
+#     driver: bridge
+
+# Use this if you want to connect to an existing network (e.g., if you have a pre-existing Traefik setup)
+networks:
+  saas_network:
+    name: grafana_grafana-network # you could do ```docker network ls``` to find this
+    external: true
 
 services:
   # If you have a pre-existing Traefik setup, you can skip / comment out this service definition and just 
@@ -20,25 +18,25 @@ services:
   # run a standalone Traefik instance for this stack, keep this definition as is and make sure to update 
   # the network name if needed.
   # 1. THE REVERSE PROXY (The Traffic Cop)
-  traefik:
-    image: traefik:v3.0
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - "--api.insecure=true" # Enable dashboard for local dev
-      - "--providers.docker=true" # Listen to the Docker socket!
-      - "--providers.docker.exposedbydefault=false" # Only route containers with Traefik labels
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      # (DNS-01 Let's Encrypt config would go here for production)
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8080:8080" # Traefik Dashboard
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro" # CRITICAL: Lets Traefik see new containers
-    networks:
-      - saas_network
+  # traefik:
+  #   image: traefik:v3.0
+  #   container_name: traefik
+  #   restart: unless-stopped
+  #   command:
+  #     - "--api.insecure=true" # Enable dashboard for local dev
+  #     - "--providers.docker=true" # Listen to the Docker socket!
+  #     - "--providers.docker.exposedbydefault=false" # Only route containers with Traefik labels
+  #     - "--entrypoints.web.address=:80"
+  #     - "--entrypoints.websecure.address=:443"
+  #     # (DNS-01 Let's Encrypt config would go here for production)
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "8080:8080" # Traefik Dashboard
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock:ro" # CRITICAL: Lets Traefik see new containers
+  #   networks:
+  #     - saas_network
 
   # 2. THE SHARED RELATIONAL DATABASE
   postgres:
@@ -99,7 +97,7 @@ services:
     volumes:
       - garage_data:/var/lib/garage/data
       - garage_meta_data:/var/lib/garage/meta
-      - ./garage.toml:/etc/garage.toml:ro
+      - ./garage-dev.toml:/etc/garage.toml:ro
     ports:
       - 3900:3900
       - 3901:3901
