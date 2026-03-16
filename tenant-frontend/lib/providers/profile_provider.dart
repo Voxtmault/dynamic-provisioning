@@ -27,17 +27,25 @@ class ProfileProvider extends ChangeNotifier {
     final primary = p.primaryColor;
     final secondary = p.secondaryColor;
     final background = p.backgroundColor;
-    final onPrimary = _isLight(primary) ? Colors.black87 : Colors.white;
+
+    final onPrimary = _contrastColor(primary);
+    final onSecondary = _contrastColor(secondary);
+    final onSurface = _contrastColor(background);
+    final brightness = _isLight(background) ? Brightness.light : Brightness.dark;
 
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.light(
+      brightness: brightness,
+      colorScheme: ColorScheme(
+        brightness: brightness,
         primary: primary,
-        secondary: secondary,
-        surface: background,
         onPrimary: onPrimary,
-        onSecondary: _isLight(secondary) ? Colors.black87 : Colors.white,
-        onSurface: Colors.black87,
+        secondary: secondary,
+        onSecondary: onSecondary,
+        error: const Color(0xFFCF6679),
+        onError: Colors.white,
+        surface: background,
+        onSurface: onSurface,
       ),
       scaffoldBackgroundColor: background,
       appBarTheme: AppBarTheme(
@@ -73,5 +81,9 @@ class ProfileProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  static bool _isLight(Color color) => color.computeLuminance() > 0.4;
+  // WCAG threshold: luminance > 0.179 means black text has better contrast.
+  static bool _isLight(Color color) => color.computeLuminance() > 0.179;
+
+  static Color _contrastColor(Color bg) =>
+      _isLight(bg) ? Colors.black87 : Colors.white;
 }

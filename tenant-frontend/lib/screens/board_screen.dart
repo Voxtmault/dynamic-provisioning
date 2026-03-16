@@ -100,11 +100,14 @@ class _BoardScreenState extends State<BoardScreen> {
 
       case MessageState.loaded:
         if (msgProvider.messages.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
               'No messages yet.\nBe the first to post!',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
             ),
           );
         }

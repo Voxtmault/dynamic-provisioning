@@ -42,6 +42,27 @@ func (c *Client) WriteSecret(path string, data map[string]interface{}) error {
 	return nil
 }
 
+// ReadSecret reads a KV-v2 secret at the given path.
+// The path should NOT include "secret/data/" prefix.
+func (c *Client) ReadSecret(path string) (map[string]interface{}, error) {
+	fullPath := fmt.Sprintf("secret/data/%s", path)
+
+	secret, err := c.client.Logical().Read(fullPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read secret at %s: %w", fullPath, err)
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, fmt.Errorf("no secret found at %s", fullPath)
+	}
+
+	data, ok := secret.Data["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected data format at %s", fullPath)
+	}
+
+	return data, nil
+}
+
 // CreatePolicy creates or updates a policy with the given name and HCL rules.
 func (c *Client) CreatePolicy(name, rules string) error {
 	err := c.client.Sys().PutPolicy(name, rules)

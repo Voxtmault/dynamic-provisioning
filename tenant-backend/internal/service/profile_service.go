@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -97,7 +98,7 @@ func (s *profileService) fetchAndCacheProfile(ctx context.Context) (*model.AppPr
 }
 
 func (s *profileService) fetchFromAdmin(ctx context.Context) (*model.AppProfile, error) {
-	url := fmt.Sprintf("%s/api/tenant/%s/profile", s.adminBackendURL, s.tenantID)
+	url := fmt.Sprintf("%s/api/tenant/%s/profile", s.adminBackendURL, strings.TrimPrefix(s.tenantID, "tenant_"))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

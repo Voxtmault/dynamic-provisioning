@@ -51,9 +51,9 @@ class MessageCard extends StatelessWidget {
                         const Spacer(),
                         Text(
                           _fmt.format(message.createdAt),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.black45,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                           ),
                         ),
                       ],

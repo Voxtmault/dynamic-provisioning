@@ -1,0 +1,10 @@
+# Host-generated Flutter/Dart artifacts — must be regenerated inside the
+# container against the container's Flutter SDK and pub cache paths.
+.dart_tool/
+build/
+
+# IDE and OS noise
+.idea/
+.vscode/
+*.iml
+.DS_Store

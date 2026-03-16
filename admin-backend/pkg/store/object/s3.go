@@ -13,11 +13,12 @@ import (
 const presignedExpiry = 30 * time.Minute
 
 type S3Client struct {
-	client *minio.Client
-	bucket string
+	client         *minio.Client
+	bucket         string
+	publicEndpoint string // host:port rewritten into presigned URLs for browser access
 }
 
-func NewS3Client(endpoint, accessKey, secretKey, bucket string, useSSL bool) (*S3Client, error) {
+func NewS3Client(endpoint, publicEndpoint, accessKey, secretKey, bucket string, useSSL bool) (*S3Client, error) {
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
 		Secure: useSSL,
@@ -26,7 +27,7 @@ func NewS3Client(endpoint, accessKey, secretKey, bucket string, useSSL bool) (*S
 		return nil, fmt.Errorf("failed to create s3 client: %w", err)
 	}
 
-	return &S3Client{client: client, bucket: bucket}, nil
+	return &S3Client{client: client, bucket: bucket, publicEndpoint: publicEndpoint}, nil
 }
 
 func (s *S3Client) GeneratePresignedURL(objectKey string, expiry time.Duration) (string, error) {
@@ -39,6 +40,11 @@ func (s *S3Client) GeneratePresignedURL(objectKey string, expiry time.Duration) 
 		return "", fmt.Errorf("failed to generate presigned url: %w", err)
 	}
 
+	if s.publicEndpoint != "" {
+		presignedURL.Host = s.publicEndpoint
+		presignedURL.Scheme = "https"
+	}
+
 	return presignedURL.String(), nil
 }
 
@@ -48,6 +54,11 @@ func (s *S3Client) GeneratePresignedPutURL(objectKey string, expiry time.Duratio
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned put url: %w", err)
+	}
+
+	if s.publicEndpoint != "" {
+		presignedURL.Host = s.publicEndpoint
+		presignedURL.Scheme = "https"
 	}
 
 	return presignedURL.String(), nil

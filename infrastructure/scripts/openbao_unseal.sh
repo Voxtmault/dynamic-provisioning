@@ -1,11 +1,11 @@
 #!/bin/bash
 
-openbao="docker exec -i shared_openbao /bao"
+openbao="docker exec -it shared_openbao bao"
 
 # Parse the unseal keys
-unseal_key_1=$(grep "Unseal Key 1:" ./openbao-init.txt | awk '{print $4}')
-unseal_key_2=$(grep "Unseal Key 2:" ./openbao-init.txt | awk '{print $4}')
-unseal_key_3=$(grep "Unseal Key 3:" ./openbao-init.txt | awk '{print $4}')
+unseal_key_1=$(grep "Unseal Key 1:" ./openbao-init.keys | awk '{print $4}')
+unseal_key_2=$(grep "Unseal Key 2:" ./openbao-init.keys | awk '{print $4}')
+unseal_key_3=$(grep "Unseal Key 3:" ./openbao-init.keys | awk '{print $4}')
 
 echo "Unsealing OpenBao..."
 

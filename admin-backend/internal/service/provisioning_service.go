@@ -16,8 +16,6 @@ import (
 	"github.com/voxtmault/dynamic-provisioning/admin-backend/pkg/store/secret"
 )
 
-const networkName = "saas_network"
-
 type provisioningService struct {
 	baoClient    *secret.Client
 	dockerClient *docker.Client
@@ -120,7 +118,19 @@ path "secret/metadata/%s/dp/%s" {
 		sqlDB.Close()
 	}
 
-	// 5. Write secrets to OpenBao
+	// 5. Persist AppRole credentials to admin-only OpenBao path so they can be
+	// retrieved later (e.g. to restart tenant containers after a crash/deploy).
+	adminCredsPath := fmt.Sprintf("%s/admin/%s/approle", s.cfg.Env, tenantPrefix)
+	adminCredsData := map[string]interface{}{
+		"role_id":   roleID,
+		"secret_id": secretID,
+	}
+	log.Printf("persisting approle credentials to openbao: %s", adminCredsPath)
+	if err := s.baoClient.WriteSecret(adminCredsPath, adminCredsData); err != nil {
+		return "", "", fmt.Errorf("failed to persist approle credentials: %w", err)
+	}
+
+	// 6. Write tenant config secrets to OpenBao
 	secretPath := fmt.Sprintf("%s/dp/%s", s.cfg.Env, tenantPrefix)
 	secretData := map[string]interface{}{
 		"db_host":        s.cfg.DBHost,
@@ -153,8 +163,9 @@ func (s *provisioningService) SpinUpContainers(ctx context.Context, tenant *mode
 	backendName := fmt.Sprintf("%s-backend", tenantPrefix)
 	backendLabels := map[string]string{
 		"traefik.enable": "true",
-		fmt.Sprintf("traefik.http.routers.%s-backend.rule", tenantPrefix):                      fmt.Sprintf("Host(`%s.localhost`) && PathPrefix(`/api`)", tenantSubdomain),
-		fmt.Sprintf("traefik.http.routers.%s-backend.entrypoints", tenantPrefix):               "web",
+		fmt.Sprintf("traefik.http.routers.%s-backend.rule", tenantPrefix):                      fmt.Sprintf("Host(`%s.%s`) && PathPrefix(`/api`)", tenantSubdomain, s.cfg.BaseDomain),
+		fmt.Sprintf("traefik.http.routers.%s-backend.entrypoints", tenantPrefix):               "websecure",
+		fmt.Sprintf("traefik.http.routers.%s-backend.tls.certresolver", tenantPrefix):          "le",
 		fmt.Sprintf("traefik.http.services.%s-backend.loadbalancer.server.port", tenantPrefix): "8080",
 	}
 
@@ -173,7 +184,7 @@ func (s *provisioningService) SpinUpContainers(ctx context.Context, tenant *mode
 		Image:       "tenant-backend:latest",
 		Env:         backendEnv,
 		Labels:      backendLabels,
-		NetworkName: networkName,
+		NetworkName: s.cfg.DockerNetwork,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create backend container: %w", err)
@@ -183,10 +194,10 @@ func (s *provisioningService) SpinUpContainers(ctx context.Context, tenant *mode
 	frontendName := fmt.Sprintf("%s-frontend", tenantPrefix)
 	frontendLabels := map[string]string{
 		"traefik.enable": "true",
-		fmt.Sprintf("traefik.http.routers.%s-frontend.rule", tenantPrefix):                      fmt.Sprintf("Host(`%s.localhost`)", tenantSubdomain),
-		fmt.Sprintf("traefik.http.routers.%s-frontend.entrypoints", tenantPrefix):               "web",
+		fmt.Sprintf("traefik.http.routers.%s-frontend.rule", tenantPrefix):                      fmt.Sprintf("Host(`%s.%s`)", tenantSubdomain, s.cfg.BaseDomain),
+		fmt.Sprintf("traefik.http.routers.%s-frontend.entrypoints", tenantPrefix):               "websecure",
+		fmt.Sprintf("traefik.http.routers.%s-frontend.tls.certresolver", tenantPrefix):          "le",
 		fmt.Sprintf("traefik.http.services.%s-frontend.loadbalancer.server.port", tenantPrefix): "80",
-		fmt.Sprintf("traefik.http.routers.%s-frontend.priority", tenantPrefix):                  "1",
 	}
 
 	log.Printf("creating frontend container: %s", frontendName)
@@ -195,13 +206,59 @@ func (s *provisioningService) SpinUpContainers(ctx context.Context, tenant *mode
 		Image:       "tenant-frontend:latest",
 		Env:         []string{},
 		Labels:      frontendLabels,
-		NetworkName: networkName,
+		NetworkName: s.cfg.DockerNetwork,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create frontend container: %w", err)
 	}
 
 	return nil
+}
+
+// GetAppRoleCredentials retrieves the persisted AppRole role_id and secret_id
+// for a tenant from the admin-only OpenBao path.
+func (s *provisioningService) GetAppRoleCredentials(tenantID uint) (string, string, error) {
+	tenantPrefix := fmt.Sprintf("tenant_%d", tenantID)
+	adminCredsPath := fmt.Sprintf("%s/admin/%s/approle", s.cfg.Env, tenantPrefix)
+
+	data, err := s.baoClient.ReadSecret(adminCredsPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to read approle credentials: %w", err)
+	}
+
+	roleID, ok := data["role_id"].(string)
+	if !ok || roleID == "" {
+		return "", "", fmt.Errorf("missing or invalid role_id in stored credentials")
+	}
+	secretID, ok := data["secret_id"].(string)
+	if !ok || secretID == "" {
+		return "", "", fmt.Errorf("missing or invalid secret_id in stored credentials")
+	}
+
+	return roleID, secretID, nil
+}
+
+// RestartTenantContainers stops and removes the existing tenant containers, then
+// re-creates them using the persisted AppRole credentials.
+func (s *provisioningService) RestartTenantContainers(ctx context.Context, tenant *model.Tenant) error {
+	tenantPrefix := fmt.Sprintf("tenant_%d", tenant.ID)
+
+	roleID, secretID, err := s.GetAppRoleCredentials(tenant.ID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve approle credentials: %w", err)
+	}
+
+	// Stop and remove existing containers (no-op if they are already gone)
+	for _, suffix := range []string{"-backend", "-frontend"} {
+		name := tenantPrefix + suffix
+		log.Printf("removing container: %s", name)
+		if err := s.dockerClient.StopAndRemoveContainer(ctx, name); err != nil {
+			return fmt.Errorf("failed to remove container %s: %w", name, err)
+		}
+	}
+
+	log.Printf("re-creating containers for tenant %d", tenant.ID)
+	return s.SpinUpContainers(ctx, tenant, roleID, secretID)
 }
 
 func generateRandomPassword(length int) string {

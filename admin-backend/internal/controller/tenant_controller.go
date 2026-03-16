@@ -86,3 +86,26 @@ func (tc *TenantController) GetTenantProfile(c echo.Context) error {
 		Data:    profile,
 	})
 }
+
+func (tc *TenantController) RestartTenant(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, model.APIResponse{
+			Status:  http.StatusBadRequest,
+			Message: "invalid tenant id",
+		})
+	}
+
+	if err := tc.service.RestartTenant(c.Request().Context(), uint(id)); err != nil {
+		return c.JSON(http.StatusInternalServerError, model.APIResponse{
+			Status:  http.StatusInternalServerError,
+			Message: "failed to restart tenant: " + err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, model.APIResponse{
+		Status:  http.StatusOK,
+		Message: "tenant restarted successfully",
+	})
+}

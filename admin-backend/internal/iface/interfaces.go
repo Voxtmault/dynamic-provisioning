@@ -31,9 +31,11 @@ type TenantService interface {
 	RegisterTenant(ctx context.Context, req model.RegisterTenantRequest) (*model.RegisterTenantResponse, error)
 	ListTenants(ctx context.Context) ([]model.TenantListItem, error)
 	GetTenantProfile(ctx context.Context, tenantID uint) (*model.TenantProfileResponse, error)
+	RestartTenant(ctx context.Context, tenantID uint) error
 }
 
 type ProvisioningService interface {
 	ProvisionTenant(ctx context.Context, tenant *model.Tenant) (roleID, secretID string, err error)
 	SpinUpContainers(ctx context.Context, tenant *model.Tenant, roleID, secretID string) error
+	RestartTenantContainers(ctx context.Context, tenant *model.Tenant) error
 }

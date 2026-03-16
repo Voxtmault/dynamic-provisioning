@@ -2,7 +2,10 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -18,10 +21,11 @@ type Config struct {
 	OpenBaoRootToken string
 
 	// S3 / Garage
-	S3Endpoint  string
-	S3AccessKey string
-	S3SecretKey string
-	S3Bucket    string
+	S3Endpoint       string
+	S3PublicEndpoint string
+	S3AccessKey      string
+	S3SecretKey      string
+	S3Bucket         string
 
 	// Redis
 	RedisHost     string
@@ -36,9 +40,16 @@ type Config struct {
 	// Application
 	Env             string
 	AdminBackendURL string
+	DockerNetwork   string
+	BaseDomain      string
 }
 
 func Load() (*Config, error) {
+	// try to load from a predefined .env file
+	if err := godotenv.Load("../infrastructure/envs/admin-backend.env"); err != nil {
+		log.Println("failed to load from predefined env file, continuing with system env vars")
+	}
+
 	cfg := &Config{
 		DBHost:           os.Getenv("DB_HOST"),
 		DBPort:           os.Getenv("DB_PORT"),
@@ -48,6 +59,7 @@ func Load() (*Config, error) {
 		OpenBaoAddr:      os.Getenv("OPENBAO_ADDR"),
 		OpenBaoRootToken: os.Getenv("OPENBAO_ROOT_TOKEN"),
 		S3Endpoint:       os.Getenv("S3_ENDPOINT"),
+		S3PublicEndpoint: os.Getenv("S3_PUBLIC_ENDPOINT"),
 		S3AccessKey:      os.Getenv("S3_ACCESS_KEY"),
 		S3SecretKey:      os.Getenv("S3_SECRET_KEY"),
 		S3Bucket:         os.Getenv("S3_BUCKET"),
@@ -59,6 +71,8 @@ func Load() (*Config, error) {
 		AdminPassword:    os.Getenv("ADMIN_PASSWORD"),
 		Env:              os.Getenv("ENV"),
 		AdminBackendURL:  os.Getenv("ADMIN_BACKEND_URL"),
+		DockerNetwork:    os.Getenv("DOCKER_NETWORK"),
+		BaseDomain:       os.Getenv("BASE_DOMAIN"),
 	}
 
 	required := map[string]string{
@@ -70,6 +84,7 @@ func Load() (*Config, error) {
 		"OPENBAO_ADDR":       cfg.OpenBaoAddr,
 		"OPENBAO_ROOT_TOKEN": cfg.OpenBaoRootToken,
 		"S3_ENDPOINT":        cfg.S3Endpoint,
+		"S3_PUBLIC_ENDPOINT": cfg.S3PublicEndpoint,
 		"S3_ACCESS_KEY":      cfg.S3AccessKey,
 		"S3_SECRET_KEY":      cfg.S3SecretKey,
 		"S3_BUCKET":          cfg.S3Bucket,
@@ -81,8 +96,9 @@ func Load() (*Config, error) {
 		"ADMIN_PASSWORD":     cfg.AdminPassword,
 		"ENV":                cfg.Env,
 		"ADMIN_BACKEND_URL":  cfg.AdminBackendURL,
+		"DOCKER_NETWORK":     cfg.DockerNetwork,
+		"BASE_DOMAIN":        cfg.BaseDomain,
 	}
-
 	for name, val := range required {
 		if val == "" {
 			return nil, fmt.Errorf("required environment variable %s is not set", name)

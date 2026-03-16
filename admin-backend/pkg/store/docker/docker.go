@@ -113,6 +113,26 @@ func (d *Client) GetContainerStatus(ctx context.Context, containerName string) (
 	}, nil
 }
 
+// StopAndRemoveContainer stops and removes a container by name. It is a no-op
+// if the container does not exist.
+func (d *Client) StopAndRemoveContainer(ctx context.Context, name string) error {
+	status, err := d.GetContainerStatus(ctx, name)
+	if err != nil {
+		return fmt.Errorf("failed to get container status for %s: %w", name, err)
+	}
+	if status.State == "not_found" {
+		return nil
+	}
+
+	// Stop (ignore error — container may already be stopped)
+	_ = d.cli.ContainerStop(ctx, status.ID, container.StopOptions{})
+
+	if err := d.cli.ContainerRemove(ctx, status.ID, container.RemoveOptions{Force: true}); err != nil {
+		return fmt.Errorf("failed to remove container %s: %w", name, err)
+	}
+	return nil
+}
+
 // PullImage pulls a Docker image. Useful to ensure images are available before creating containers.
 func (d *Client) PullImage(ctx context.Context, imageName string) error {
 	reader, err := d.cli.ImagePull(ctx, imageName, image.PullOptions{})

@@ -9,7 +9,7 @@
 # Use this if you want to connect to an existing network (e.g., if you have a pre-existing Traefik setup)
 networks:
   saas_network:
-    name: grafana_grafana-network # you could do ```docker network ls``` to find this
+    name: <your_network_here> # you could do ```docker network ls``` to find this
     external: true
 
 services:
@@ -105,6 +105,12 @@ services:
       - 3903:3903
     networks:
       - saas_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.garage-s3.rule=Host(`garage.yourdomain.id`)"
+      - "traefik.http.routers.garage-s3.entrypoints=websecure"
+      - "traefik.http.routers.garage-s3.tls.certresolver=le"
+      - "traefik.http.services.garage-s3.loadbalancer.server.port=3900"
     deploy:
       resources:
         limits:
@@ -140,18 +146,15 @@ services:
     build:
       context: ../admin-backend  # Points up one directory, then into admin-backend
       dockerfile: Dockerfile
-    environment:
-      - DB_HOST=postgres
-      - DB_USER=admin
-      - DB_PASS=supersecretpassword
+    env_file:
+      - ./envs/admin-backend.env # Load environment variables from a file
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock" 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.admin-api.rule=Host(`api.admin.localhost`)" # Change to your domain if not using localhost
-      - "traefik.http.routers.admin-api.entrypoints=web" # Use this if you don't have TLS set up for local dev
-      # - "traefik.http.routers.admin-api.entrypoints=websecure" # Use this if you have TLS set up (e.g., with a local cert resolver like mkcert or Let's Encrypt staging)
-      # - "traefik.http.routers.admin-api.tls.certresolver=le"   # Use this with websecure label
+      - "traefik.http.routers.admin-api.rule=Host(`api.admin.yourdomain.id`)"
+      - "traefik.http.routers.admin-api.entrypoints=websecure"
+      - "traefik.http.routers.admin-api.tls.certresolver=le"
     networks:
       - saas_network
     depends_on:
@@ -169,10 +172,9 @@ services:
       dockerfile: Dockerfile
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.admin-api.rule=Host(`admin.localhost`)" # Change to your domain if not using localhost
-      - "traefik.http.routers.admin-api.entrypoints=web" # Use this if you don't have TLS set up for local dev
-      # - "traefik.http.routers.admin-api.entrypoints=websecure" # Use this if you have TLS set up (e.g., with a local cert resolver like mkcert or Let's Encrypt staging)
-      # - "traefik.http.routers.admin-api.tls.certresolver=le"   # Use this with websecure label
+      - "traefik.http.routers.admin-frontend.rule=Host(`admin.yourdomain.id`)"
+      - "traefik.http.routers.admin-frontend.entrypoints=websecure"
+      - "traefik.http.routers.admin-frontend.tls.certresolver=le"
     networks:
       - saas_network
     depends_on:

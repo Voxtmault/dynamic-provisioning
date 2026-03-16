@@ -42,6 +42,7 @@ func Setup(
 	protected.Use(jwtMiddleware(jwtSecret))
 	protected.POST("/tenants", tenantCtrl.RegisterTenant)
 	protected.GET("/tenants", tenantCtrl.ListTenants)
+	protected.PUT("/tenants/:id/restart", tenantCtrl.RestartTenant)
 }
 
 func jwtMiddleware(secret string) echo.MiddlewareFunc {

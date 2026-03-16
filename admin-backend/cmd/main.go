@@ -58,7 +58,7 @@ func main() {
 
 	// 5. Initialize S3/Garage client
 	s3Client, err := object.NewS3Client(
-		cfg.S3Endpoint, cfg.S3AccessKey, cfg.S3SecretKey,
+		cfg.S3Endpoint, cfg.S3PublicEndpoint, cfg.S3AccessKey, cfg.S3SecretKey,
 		cfg.S3Bucket, false,
 	)
 	if err != nil {

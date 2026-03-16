@@ -144,3 +144,29 @@ func (s *tenantService) GetTenantProfile(ctx context.Context, tenantID uint) (*m
 		ColorPalette: tenant.ColorPalette,
 	}, nil
 }
+
+func (s *tenantService) RestartTenant(ctx context.Context, tenantID uint) error {
+	tenant, err := s.tenantRepo.FindByID(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("tenant not found: %w", err)
+	}
+
+	if tenant.Status == model.TenantStatusProvisioning {
+		return fmt.Errorf("tenant is currently being provisioned")
+	}
+
+	log.Printf("restarting containers for tenant %d", tenant.ID)
+	if err := s.provisioningSvc.RestartTenantContainers(ctx, tenant); err != nil {
+		tenant.Status = model.TenantStatusError
+		_ = s.tenantRepo.Update(ctx, tenant)
+		return fmt.Errorf("failed to restart tenant containers: %w", err)
+	}
+
+	tenant.Status = model.TenantStatusActive
+	if err := s.tenantRepo.Update(ctx, tenant); err != nil {
+		return fmt.Errorf("failed to update tenant status: %w", err)
+	}
+
+	log.Printf("tenant %d restarted successfully", tenant.ID)
+	return nil
+}
